@@ -1,19 +1,23 @@
-//! server-dash: terminal dashboard that runs on the VPS and watches falc.
+//! server-status: check on your servers from any machine on your Tailscale network.
 //!
 //! Usage:
-//!   server-dash [URL]
+//!   server-status            one-line summary of every server in the config
+//!   server-status falc       live dashboard for one server (`-falc` works too)
+//!   server-status HOST:PORT  dashboard for an address not in the config
+//!                            (token from $DASH_TOKEN)
 //!
-//! URL defaults to $DASH_URL, then http://127.0.0.1:9100. "/stats" is added
-//! if missing. Set DASH_TOKEN to the same value as the agent's AGENT_TOKEN.
-//!
-//! Keys: q / Esc quit, r refresh now.
+//! Servers are listed in ~/.config/server-status/config.toml (see config.rs).
+//! Dashboard keys: q / Esc quit, r refresh now.
 
 mod app;
+mod config;
 mod format;
+mod overview;
 mod poller;
 mod ui;
 
 use std::io;
+use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
@@ -26,19 +30,88 @@ use poller::PollResult;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const UI_TICK: Duration = Duration::from_millis(250);
 
-fn main() -> io::Result<()> {
+const HELP: &str = "\
+usage:
+  server-status            summary of every server in your config
+  server-status NAME       live dashboard for one server (e.g. falc, or -falc)
+  server-status HOST:PORT  dashboard for an address not in your config
+                           (token from DASH_TOKEN)
+
+config: ~/.config/server-status/config.toml
+keys:   q quit, r refresh";
+
+fn main() -> ExitCode {
     let arg = std::env::args().nth(1);
-    if matches!(arg.as_deref(), Some("-h" | "--help")) {
-        println!("usage: server-dash [URL]\n\nenv: DASH_URL, DASH_TOKEN\nkeys: q quit, r refresh");
-        return Ok(());
+
+    match arg.as_deref() {
+        Some("-h" | "--help" | "help") => {
+            println!("{HELP}");
+            ExitCode::SUCCESS
+        }
+        Some("-V" | "--version") => {
+            println!("server-status {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
+
+        // No name: overview of every server.
+        None => {
+            let config = match config::load() {
+                Ok((c, _)) => c,
+                Err(e) => return fail(&e),
+            };
+            if config.servers.is_empty() {
+                return fail(&format!(
+                    "your config has no servers yet. Add some like this:\n\n{}",
+                    config::EXAMPLE
+                ));
+            }
+            if overview::run(&config) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1) // lets scripts check "is anything down?"
+            }
+        }
+
+        Some(target) => {
+            // Accept `falc`, `-falc` and `--falc`.
+            let target = target.trim_start_matches('-');
+
+            // Looks like an address rather than a name: connect directly.
+            if target.contains(':') || target.contains('/') {
+                let token = std::env::var("DASH_TOKEN").ok().filter(|t| !t.is_empty());
+                return dashboard(normalize_url(target), token);
+            }
+
+            let (config, path) = match config::load() {
+                Ok(c) => c,
+                Err(e) => return fail(&e),
+            };
+            match config.servers.get(target) {
+                Some(server) => dashboard(normalize_url(&server.url), server.token.clone()),
+                None => {
+                    let names: Vec<&str> = config.servers.keys().map(String::as_str).collect();
+                    fail(&format!(
+                        "no server called '{target}' in {}\nservers you have: {}",
+                        path.display(),
+                        if names.is_empty() {
+                            "(none)".to_string()
+                        } else {
+                            names.join(", ")
+                        }
+                    ))
+                }
+            }
+        }
     }
+}
 
-    let url = normalize_url(
-        &arg.or_else(|| std::env::var("DASH_URL").ok())
-            .unwrap_or_else(|| "http://127.0.0.1:9100".into()),
-    );
-    let token = std::env::var("DASH_TOKEN").ok().filter(|t| !t.is_empty());
+fn fail(msg: &str) -> ExitCode {
+    eprintln!("server-status: {msg}");
+    ExitCode::from(2)
+}
 
+/// Open the live dashboard for one server.
+fn dashboard(url: String, token: Option<String>) -> ExitCode {
     let (refresh_tx, refresh_rx) = mpsc::channel();
     let results = poller::spawn(url.clone(), token, POLL_INTERVAL, refresh_rx);
     let mut app = App::new(url);
@@ -48,7 +121,11 @@ fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
     let result = run(&mut terminal, &mut app, &results, &refresh_tx);
     ratatui::restore();
-    result
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => fail(&e.to_string()),
+    }
 }
 
 fn run(
@@ -87,7 +164,7 @@ fn run(
     }
 }
 
-fn normalize_url(url: &str) -> String {
+pub fn normalize_url(url: &str) -> String {
     let mut url = url.trim_end_matches('/').to_string();
     if !url.starts_with("http://") && !url.starts_with("https://") {
         url = format!("http://{url}");

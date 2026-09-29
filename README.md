@@ -1,15 +1,19 @@
 # server-dashboard
 
-A terminal dashboard for monitoring a home server from a separate machine, written in Rust.
+Check on your servers from any of your computers, written in Rust.
 
-It's two small programs:
+It's two programs:
 
-- **`server-agent`** runs on the server being monitored. It samples CPU, memory, disks, network, uptime and Docker containers once per second and serves them as JSON over HTTP.
-- **`server-dash`** runs on a different machine (a VPS). It polls the agent and draws a live dashboard in the terminal. If the agent stops answering, the dashboard switches to **DOWN** and shows how long it's been unreachable.
-
-Running the dashboard off the server is the point: if the server dies, the thing watching it doesn't die with it.
+- **`server-agent`** runs on each server you want to watch. It samples CPU, memory, disks, network, uptime and Docker containers once per second and serves them as JSON over HTTP.
+- **`server-status`** runs on your laptop or desktop. Give it a server name for a live dashboard, or no name for a quick summary of everything.
 
 ```
+$ server-status
+SERVER  STATUS     CPU    MEM  DISK (fullest)        UPTIME       DOCKER
+falc    ● up     12.5%    62%   92% /mnt/storage     3d 4h 12m    5/6 running
+talon   ● DOWN  connection refused
+
+$ server-status falc
  falc  Linux (Ubuntu 24.04) · up 3d 4h 12m                                         ● UP
 ╭ CPU ─────────────────────────────────╮╭ Memory ──────────────────────────────╮
 │█████████████37.5%                    ││RAM 10.0 GiB / 16.0 GiB               │
@@ -30,96 +34,123 @@ Running the dashboard off the server is the point: if the server dies, the thing
 ## How it works
 
 ```
-   falc (home server)                         VPS
- ┌─────────────────────┐   HTTP over     ┌──────────────────┐
- │ server-agent        │   Tailscale     │ server-dash      │
- │  sampler thread ────┼──► GET /stats ◄─┼── poller thread  │
- │  (sysinfo, docker)  │   JSON + token  │  Ratatui UI      │
- └─────────────────────┘                 └──────────────────┘
+ MacBook ──┐                         ┌──► falc  (server-agent)
+           ├── Tailscale, HTTP ──────┤
+ Desktop ──┘   GET /stats + token    └──► talon (server-agent)
 ```
 
-- The agent keeps the latest snapshot in memory, so requests are instant. It uses about 3 MB of RAM.
+- Each agent keeps its latest snapshot in memory, so requests are instant. It uses about 3 MB of RAM.
+- Any number of machines can run `server-status` against the same agents at once.
 - The dashboard does network calls on a background thread, so a dead server never freezes the UI.
-- 3 failed polls in a row (about 6 seconds) and the status goes to **DOWN**. The last known data stays on screen, greyed out.
-- Requests need `Authorization: Bearer <token>` when `AGENT_TOKEN` is set.
+- 3 failed polls in a row (about 6 seconds) and the dashboard shows **DOWN**, with the last known data greyed out.
+- Requests need `Authorization: Bearer <token>` when the agent has `AGENT_TOKEN` set.
 
 ## Project layout
 
 ```
 common/   shared types (the JSON format)
 agent/    server-agent: collects stats, serves /stats and /health
-dash/     server-dash: polls the agent, draws the TUI
+dash/     server-status: summary + live dashboard
 deploy/   systemd unit and example config for the agent
 ```
 
 ## Setup
 
-Both machines need Rust (`curl https://sh.rustup.rs -sSf | sh`) and both should be on the same Tailscale network.
+Every machine needs to be on the same Tailscale network.
 
-### 1. On falc: the agent
+### 1. On each server: the agent
 
 ```bash
-git clone <this repo> && cd server-dashboard
-cargo build --release -p server-agent
+sudo apt update && sudo apt install -y build-essential git curl gh
+curl https://sh.rustup.rs -sSf | sh && source ~/.cargo/env
+gh auth login && gh repo clone zachpickell/server-dashboard && cd server-dashboard
 
+cargo build --release -p server-agent
 sudo cp target/release/server-agent /usr/local/bin/
 sudo cp deploy/server-agent.service /etc/systemd/system/
 sudo mkdir -p /etc/server-agent
 sudo cp deploy/agent.env.example /etc/server-agent/agent.env
-sudo nano /etc/server-agent/agent.env     # set AGENT_LISTEN to falc's Tailscale IP, set a token
+sudo nano /etc/server-agent/agent.env      # AGENT_LISTEN=<tailscale ip>:9100, AGENT_TOKEN=<openssl rand -hex 32>
 sudo chmod 600 /etc/server-agent/agent.env
-sudo systemctl daemon-reload
-sudo systemctl enable --now server-agent
+sudo systemctl daemon-reload && sudo systemctl enable --now server-agent
 ```
 
-Check it's running:
+If the server doesn't have Docker (`getent group docker` prints nothing), remove the Docker line from the service file first, or the agent won't start:
+
+```bash
+sudo sed -i '/SupplementaryGroups=docker/d' /etc/systemd/system/server-agent.service
+```
+
+Check it works:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" http://$(tailscale ip -4):9100/stats
 ```
 
-### 2. On the VPS: the dashboard
+### 2. On your computers: `server-status`
 
 ```bash
-git clone <this repo> && cd server-dashboard
-cargo build --release -p server-dash
-sudo cp target/release/server-dash /usr/local/bin/
-
-export DASH_TOKEN=YOUR_TOKEN
-server-dash falc:9100          # or falc's Tailscale IP
+git clone https://github.com/zachpickell/server-dashboard.git && cd server-dashboard
+cargo install --path dash      # installs server-status into ~/.cargo/bin
 ```
 
-Put `export DASH_TOKEN=...` in `~/.bashrc` so you don't have to type it every time.
+Then create `~/.config/server-status/config.toml`:
 
-## Config
+```toml
+[servers.falc]
+url = "100.x.y.z:9100"
+token = "falc-token"
 
-| Program | Variable | Default | Meaning |
-|---|---|---|---|
-| agent | `AGENT_LISTEN` | `0.0.0.0:9100` | Address to listen on |
-| agent | `AGENT_TOKEN` | none | Required bearer token |
-| dash | first argument or `DASH_URL` | `http://127.0.0.1:9100` | Agent address (`/stats` is added automatically) |
-| dash | `DASH_TOKEN` | none | Must match `AGENT_TOKEN` |
+[servers.talon]
+url = "100.a.b.c:9100"
+token = "talon-token"
+```
 
-Keys: `q` quit, `r` refresh now.
+```bash
+chmod 600 ~/.config/server-status/config.toml
+```
+
+Don't commit this file anywhere public, because it holds your tokens.
+
+## Usage
+
+| Command | What it does |
+|---|---|
+| `server-status` | One-line summary of every server, then exits. Exit code 1 if any are down. |
+| `server-status falc` | Live dashboard for falc (`-falc` also works) |
+| `server-status 100.x.y.z:9100` | Dashboard for an address not in the config (token from `DASH_TOKEN`) |
+| `server-status --help` | Help |
+
+Dashboard keys: `q` quit, `r` refresh now.
+
+Set `SERVER_STATUS_CONFIG` to use a config file somewhere else.
+
+## Agent config
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AGENT_LISTEN` | `0.0.0.0:9100` | Address to listen on (use the Tailscale IP) |
+| `AGENT_TOKEN` | none | Required bearer token |
 
 ## Notes
 
-- **Docker access.** The agent runs `docker ps`, so its user needs to be in the `docker` group. That group is effectively root on the host. The agent only ever runs `docker ps`, but keep the port on Tailscale and keep the token set.
-- **Which disks show up.** `/`, `/home`, and anything under `/mnt`, `/media` or `/srv`. Boot partitions and snaps are hidden.
+- **Docker access.** The agent runs `docker ps`, so its user is in the `docker` group, which is effectively root on that host. The agent only ever runs `docker ps`, but keep the port on Tailscale and keep the token set.
+- **Which disks show up.** `/`, `/home`, and anything under `/mnt`, `/media` or `/srv`.
+- **Updating.** Run `git pull`, then `cargo install --path dash` on your computers. On servers, rebuild the agent, `sudo systemctl stop server-agent`, copy the binary, then `start` it again.
 
 ## Development
 
 ```bash
-cargo test        # includes rendering the UI into a fake terminal
+cargo test
 cargo clippy
 AGENT_LISTEN=127.0.0.1:9100 cargo run -p server-agent
-cargo run -p server-dash -- 127.0.0.1:9100
+cargo run -p server-status -- 127.0.0.1:9100
 ```
 
 ## Roadmap
 
-- [ ] Alerts when the server goes down (Discord webhook)
-- [ ] Monitor multiple servers
+- [x] Monitor multiple servers
+- [ ] Alerts when a server goes down (Discord webhook, running on an always-on machine)
 - [ ] Per-container CPU and memory
 - [ ] Restart containers from the dashboard
 
