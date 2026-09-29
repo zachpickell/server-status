@@ -1,0 +1,25 @@
+# systemd unit for the web panel (install on talon only).
+# Setup steps are in the README ("Web panel setup").
+
+[Unit]
+Description=server-dashboard web panel
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/server-panel --config /etc/server-panel/panel.toml
+Restart=always
+RestartSec=5
+
+User=server-panel
+Group=server-panel
+# The server list (with agent tokens) is saved in /var/lib/server-panel.
+StateDirectory=server-panel
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

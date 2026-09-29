@@ -1,0 +1,9 @@
+# polkit rule for OLDER Ubuntu (22.04 and earlier), which uses .pkla files
+# instead of .rules. Same effect as 50-server-agent-reboot.rules.
+# Install: sudo cp deploy/server-agent-reboot.pkla /etc/polkit-1/localauthority/50-local.d/
+[Allow server-agent to reboot]
+Identity=unix-user:server-agent
+Action=org.freedesktop.login1.reboot;org.freedesktop.login1.reboot-multiple-sessions;org.freedesktop.login1.reboot-ignore-inhibit
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

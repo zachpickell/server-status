@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>server-panel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='5' width='24' height='9' rx='2' fill='%235eb1ff'/%3E%3Crect x='4' y='18' width='24' height='9' rx='2' fill='%235eb1ff' opacity='.6'/%3E%3Ccircle cx='9' cy='9.5' r='1.6' fill='%230f1115'/%3E%3Ccircle cx='9' cy='22.5' r='1.6' fill='%230f1115'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0f1115; --surface: #171a21; --surface-2: #1e222b; --border: #2a2f3a;
+  --text: #e6e8ec; --muted: #8b93a3; --accent: #5eb1ff; --accent-text: #0b1220;
+  --ok: #3fb950; --warn: #d29922; --bad: #f85149; --track: #262b35;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --border: #dde1e7;
+    --text: #1b1f24; --muted: #5c6570; --accent: #0969da; --accent-text: #ffffff;
+    --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; --track: #e6e9ee;
+    --shadow: 0 1px 2px rgba(0,0,0,.06);
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+/* ---------- buttons & inputs ---------- */
+.btn {
+  border: 1px solid var(--border); background: var(--surface-2); border-radius: 7px;
+  padding: 5px 11px; cursor: pointer; white-space: nowrap; line-height: 1.3;
+}
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.danger { color: var(--bad); }
+.btn.danger.solid { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+.btn.sm { padding: 3px 8px; font-size: 12.5px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--border); }
+input[type=text], input[type=password], select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px;
+}
+input:focus, select:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 4px; }
+
+/* ---------- login ---------- */
+#login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login-box {
+  width: 100%; max-width: 340px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px 24px; box-shadow: var(--shadow);
+}
+.login-box h1 { font-size: 18px; margin: 0 0 4px; }
+.login-box p { margin: 0 0 18px; color: var(--muted); }
+.login-box .btn { width: 100%; margin-top: 14px; padding: 8px; }
+.form-error { color: var(--bad); font-size: 13px; margin-top: 10px; min-height: 1em; }
+
+/* ---------- top bar ---------- */
+header.top {
+  position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--border);
+}
+.top-inner { max-width: 1400px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brand { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.brand img { width: 20px; height: 20px; }
+nav.tabs { display: flex; gap: 4px; }
+nav.tabs button { background: none; border: 0; padding: 6px 10px; border-radius: 7px; cursor: pointer; color: var(--muted); }
+nav.tabs button[aria-selected=true] { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+#summary { color: var(--muted); font-size: 13px; }
+
+main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+/* ---------- server cards ---------- */
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.card.down { border-color: color-mix(in srgb, var(--bad) 55%, var(--border)); }
+.card-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 10px; }
+.card-title { min-width: 0; }
+.card-title h2 { font-size: 16px; margin: 0; }
+.card-sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.up { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.pill.down { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.card-body { padding: 0 16px 14px; }
+.down-msg { color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.down-msg .muted { color: var(--muted); display: block; margin-top: 4px; }
+
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+.metric .row { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+.metric .row span:first-child { color: var(--muted); }
+.num { font-family: var(--mono); font-size: 12.5px; }
+.bar { height: 6px; background: var(--track); border-radius: 99px; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 99px; background: var(--ok); transition: width .4s; }
+.bar > i.warn { background: var(--warn); } .bar > i.bad { background: var(--bad); }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+.facts b { color: var(--text); font-weight: 500; font-family: var(--mono); }
+
+.section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 8px; display: flex; justify-content: space-between; }
+.disks { display: grid; gap: 10px; }
+.disk .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; margin-bottom: 4px; }
+.disk .mount { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.disk .num { color: var(--muted); white-space: nowrap; }
+
+.containers { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.ctr { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.ctr:first-child { border-top: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.dot.running { background: var(--ok); } .dot.exited, .dot.dead { background: var(--bad); }
+.dot.paused, .dot.restarting { background: var(--warn); }
+.ctr-info { min-width: 0; flex: 1 1 180px; }
+.ctr-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-meta { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-actions { display: flex; gap: 6px; }
+.empty { color: var(--muted); font-size: 13px; padding: 10px 12px; }
+
+.card-foot { border-top: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+.card-foot .btn { margin-left: auto; }
+
+.welcome { text-align: center; padding: 60px 16px; color: var(--muted); }
+.welcome h2 { color: var(--text); font-size: 18px; margin: 0 0 6px; }
+
+/* ---------- settings ---------- */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); max-width: 860px; }
+.panel + .panel { margin-top: 16px; }
+.panel-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.panel-head h2 { font-size: 15px; margin: 0; }
+.panel-body { padding: 16px; }
+table.list { width: 100%; border-collapse: collapse; }
+table.list th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+table.list td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.list tr:last-child td { border-bottom: 0; }
+table.list td.actions { text-align: right; white-space: nowrap; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.form-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+.result { font-size: 13px; }
+.result.ok { color: var(--ok); } .result.bad { color: var(--bad); }
+
+/* ---------- dialogs & toasts ---------- */
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); padding: 0; width: min(560px, calc(100vw - 32px)); box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+dialog::backdrop { background: rgba(0,0,0,.5); }
+dialog.wide { width: min(1000px, calc(100vw - 32px)); }
+.dlg-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.dlg-head h3 { margin: 0; font-size: 15px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlg-body { padding: 16px; }
+.dlg-foot { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+pre.logs { margin: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: min(60vh, 600px); overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; }
+#toasts { position: fixed; bottom: 16px; right: 16px; left: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 50; pointer-events: none; }
+.toast { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--ok); border-radius: 8px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 420px; pointer-events: auto; font-size: 13px; }
+.toast.bad { border-left-color: var(--bad); }
+
+@media (max-width: 560px) {
+  .metrics, .form-grid { grid-template-columns: 1fr; }
+  .top-right #summary { display: none; }
+  table.list .hide-sm { display: none; }
+  table.list th, table.list td { padding-left: 10px; padding-right: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ login ============ -->
+<div id="login" hidden>
+  <form class="login-box" id="login-form">
+    <h1>server-panel</h1>
+    <p>Sign in to manage your servers.</p>
+    <label for="pw">Password</label>
+    <input type="password" id="pw" autocomplete="current-password" required autofocus>
+    <button class="btn primary" type="submit">Sign in</button>
+    <div class="form-error" id="login-error"></div>
+  </form>
+</div>
+
+<!-- ============ app ============ -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand"><img alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='5' width='24' height='9' rx='2' fill='%235eb1ff'/%3E%3Crect x='4' y='18' width='24' height='9' rx='2' fill='%235eb1ff' opacity='.6'/%3E%3C/svg%3E">server-panel</div>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-view="servers" aria-selected="true">Servers</button>
+        <button role="tab" data-view="settings" aria-selected="false">Settings</button>
+      </nav>
+      <div class="top-right">
+        <span id="summary"></span>
+        <button class="btn ghost sm" id="logout">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-servers">
+      <div id="grid"></div>
+    </section>
+
+    <section id="view-settings" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Servers</h2>
+          <button class="btn sm primary" id="add-server">Add server</button>
+        </div>
+        <table class="list">
+          <thead><tr><th>Name</th><th class="hide-sm">Agent address</th><th>Token</th><th></th></tr></thead>
+          <tbody id="server-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="server-form-panel" hidden>
+        <div class="panel-head"><h2 id="form-title">Add server</h2></div>
+        <form class="panel-body" id="server-form" autocomplete="off">
+          <div class="form-grid">
+            <div>
+              <label for="f-name">Name</label>
+              <input type="text" id="f-name" required pattern="[A-Za-z0-9_\-]{1,32}" placeholder="falc">
+              <div class="hint">Letters, numbers, - and _. This is what you'll see on the dashboard.</div>
+            </div>
+            <div>
+              <label for="f-url">Agent address</label>
+              <input type="text" id="f-url" required placeholder="100.71.44.84:9100">
+              <div class="hint">The server's Tailscale IP and the agent's port.</div>
+            </div>
+            <div class="full">
+              <label for="f-token">Agent token</label>
+              <input type="password" id="f-token" placeholder="AGENT_TOKEN from /etc/server-agent/agent.env">
+              <div class="hint" id="token-hint">Needed to read stats and control the server.</div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit" id="f-save">Save &amp; test</button>
+            <button class="btn" type="button" id="f-cancel">Cancel</button>
+            <span class="result" id="f-result"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ dialogs ============ -->
+<dialog id="dlg-logs" class="wide">
+  <div class="dlg-head">
+    <h3 id="logs-title">Logs</h3>
+    <select id="logs-lines" style="width:auto">
+      <option value="100">100 lines</option>
+      <option value="200" selected>200 lines</option>
+      <option value="500">500 lines</option>
+      <option value="1000">1000 lines</option>
+    </select>
+    <button class="btn sm" id="logs-refresh">Refresh</button>
+    <button class="btn sm ghost" id="logs-close" aria-label="Close">Close</button>
+  </div>
+  <div class="dlg-body"><pre class="logs" id="logs-text"></pre></div>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <form method="dialog" id="confirm-form">
+    <div class="dlg-head"><h3 id="confirm-title"></h3></div>
+    <div class="dlg-body">
+      <p id="confirm-msg" style="margin:0"></p>
+      <div id="confirm-type-wrap" hidden style="margin-top:14px">
+        <label for="confirm-input" id="confirm-type-label"></label>
+        <input type="text" id="confirm-input" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn" value="ok" id="confirm-ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+// ---------------- helpers ----------------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(method, path, body) {
+  const opts = { method, headers: { "X-Panel": "1" }, credentials: "same-origin" };
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  if (r.status === 401 && path !== "/api/login") {
+    showLogin();
+    throw new Error("Your session ended, please sign in again");
+  }
+  const isJson = (r.headers.get("content-type") || "").includes("json");
+  const data = isJson ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((data && data.error) || `Request failed (${r.status})`);
+  return data;
+}
+
+function toast(msg, bad = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (bad ? " bad" : "");
+  el.textContent = msg;
+  $("#toasts").append(el);
+  setTimeout(() => el.remove(), bad ? 7000 : 3500);
+}
+
+function bytes(n) {
+  const u = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return i === 0 ? `${n} B` : `${n.toFixed(1)} ${u[i]}`;
+}
+function duration(s) {
+  s = Math.floor(s);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h ${m}m`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s % 60}s`;
+  return `${s % 60}s`;
+}
+const pct = (used, total) => (total ? (used / total) * 100 : 0);
+const level = (p) => (p >= 90 ? "bad" : p >= 70 ? "warn" : "");
+const bar = (p) => `<div class="bar"><i class="${level(p)}" style="width:${Math.min(100, Math.max(0, p)).toFixed(1)}%"></i></div>`;
+
+// ---------------- confirm dialog ----------------
+function confirmBox({ title, message, okLabel, danger = false, typeToConfirm = null }) {
+  return new Promise((resolve) => {
+    const dlg = $("#dlg-confirm"), ok = $("#confirm-ok"), input = $("#confirm-input");
+    $("#confirm-title").textContent = title;
+    $("#confirm-msg").textContent = message;
+    ok.textContent = okLabel;
+    ok.className = "btn " + (danger ? "danger solid" : "primary");
+    $("#confirm-type-wrap").hidden = !typeToConfirm;
+    input.value = "";
+    if (typeToConfirm) {
+      $("#confirm-type-label").textContent = `Type "${typeToConfirm}" to confirm`;
+      ok.disabled = true;
+      input.oninput = () => { ok.disabled = input.value !== typeToConfirm; };
+    } else {
+      ok.disabled = false;
+      input.oninput = null;
+    }
+    dlg.onclose = () => resolve(dlg.returnValue === "ok" ? input.value : null);
+    dlg.returnValue = "";
+    dlg.showModal();
+    (typeToConfirm ? input : ok).focus();
+  });
+}
+
+// ---------------- state ----------------
+let servers = [];                 // last /api/servers response
+const lastSeen = {};              // name -> Date of last successful poll
+const pending = new Set();        // "server/container" with an action in flight
+let view = "servers";
+let pollTimer = null;
+
+// ---------------- login ----------------
+function showLogin() {
+  stopPolling();
+  $("#app").hidden = true;
+  $("#login").hidden = false;
+  $("#pw").value = "";
+  $("#pw").focus();
+}
+function showApp() {
+  $("#login").hidden = true;
+  $("#app").hidden = false;
+  setView(view);
+}
+$("#login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#login-error").textContent = "";
+  const btn = e.submitter; btn.disabled = true;
+  try {
+    await api("POST", "/api/login", { password: $("#pw").value });
+    showApp();
+  } catch (err) {
+    $("#login-error").textContent = err.message;
+    $("#pw").select();
+  } finally { btn.disabled = false; }
+});
+$("#logout").addEventListener("click", async () => {
+  try { await api("POST", "/api/logout"); } catch {}
+  showLogin();
+});
+
+// ---------------- views ----------------
+document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+function setView(v) {
+  view = v;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === v)));
+  $("#view-servers").hidden = v !== "servers";
+  $("#view-settings").hidden = v !== "settings";
+  refresh();
+  startPolling();
+}
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => { if (!document.hidden && view === "servers") refresh(); }, 3000);
+}
+function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("#app").hidden) refresh(); });
+
+async function refresh() {
+  try {
+    servers = await api("GET", "/api/servers");
+  } catch (err) {
+    if (!$("#app").hidden) toast(err.message, true);
+    return;
+  }
+  const now = new Date();
+  servers.forEach((s) => { if (s.ok) lastSeen[s.name] = now; });
+  const up = servers.filter((s) => s.ok).length;
+  $("#summary").textContent = servers.length ? `${up}/${servers.length} up` : "";
+  if (view === "servers") renderGrid(); else renderSettings();
+}
+
+// ---------------- servers view ----------------
+function renderGrid() {
+  const grid = $("#grid");
+  if (!servers.length) {
+    grid.innerHTML = `<div class="welcome" style="grid-column:1/-1"><h2>No servers yet</h2>
+      <p>Add falc, talon and any other machine running server-agent.</p>
+      <button class="btn primary" data-goto-settings>Add a server</button></div>`;
+    return;
+  }
+  grid.innerHTML = servers.map(card).join("");
+}
+
+function card(s) {
+  if (!s.ok) {
+    const seen = lastSeen[s.name] ? `Last seen ${lastSeen[s.name].toLocaleTimeString()}` : "Not reached since this page opened";
+    return `<article class="card down">
+      <div class="card-head"><div class="card-title"><h2>${esc(s.name)}</h2><div class="card-sub">${esc(s.url)}</div></div>
+      <span class="pill down">● Down</span></div>
+      <div class="card-body"><div class="down-msg">${esc(s.error)}<span class="muted">${esc(seen)}</span></div></div>
+    </article>`;
+  }
+  const t = s.stats;
+  const cpu = t.cpu_percent, mem = pct(t.mem_used, t.mem_total);
+  const d = t.docker;
+
+  const disks = t.disks.length
+    ? t.disks.map((k) => {
+        const p = pct(k.used, k.total);
+        return `<div class="disk" title="${esc(k.mount)}: ${bytes(k.used)} of ${bytes(k.total)} used">
+          <div class="row"><span class="mount">${esc(k.mount)}</span><span class="num">${p.toFixed(0)}% of ${bytes(k.total)}</span></div>${bar(p)}</div>`;
+      }).join("")
+    : `<div class="empty">No disks reported</div>`;
+
+  let containers;
+  if (!d.available) containers = `<div class="empty">Docker isn't installed on this server.</div>`;
+  else if (d.error) containers = `<div class="empty">${esc(d.error)}</div>`;
+  else if (!d.containers.length) containers = `<div class="empty">No containers.</div>`;
+  else containers = d.containers.map((c) => containerRow(s, c)).join("");
+
+  const running = d.available && !d.error ? `${d.containers.filter((c) => c.state === "running").length}/${d.containers.length} running` : "";
+
+  const foot = t.can_reboot
+    ? `<span>Reboot is enabled for this server</span><button class="btn sm danger" data-reboot="${esc(s.name)}">Reboot…</button>`
+    : t.can_control ? `<span>Reboot is off for this server</span>` : `<span>Controls are off: this agent has no token</span>`;
+
+  return `<article class="card">
+    <div class="card-head"><div class="card-title"><h2>${esc(s.name)}</h2>
+      <div class="card-sub">${esc(t.hostname)} · ${esc(t.os)} · up ${duration(t.uptime_secs)}</div></div>
+      <span class="pill up">● Up</span></div>
+    <div class="card-body">
+      <div class="metrics">
+        <div class="metric"><div class="row"><span>CPU</span><span class="num">${cpu.toFixed(1)}%</span></div>${bar(cpu)}</div>
+        <div class="metric"><div class="row"><span>Memory</span><span class="num">${bytes(t.mem_used)} / ${bytes(t.mem_total)}</span></div>${bar(mem)}</div>
+      </div>
+      <div class="facts">
+        <span>Load <b>${t.load.map((x) => x.toFixed(2)).join(" ")}</b></span>
+        <span>Cores <b>${t.cpu_cores}</b></span>
+        <span>↓ <b>${bytes(t.net_rx_bps)}/s</b></span>
+        <span>↑ <b>${bytes(t.net_tx_bps)}/s</b></span>
+        ${t.swap_total ? `<span>Swap <b>${pct(t.swap_used, t.swap_total).toFixed(0)}%</b></span>` : ""}
+      </div>
+      <div class="section-title"><span>Disks</span></div>
+      <div class="disks">${disks}</div>
+      <div class="section-title"><span>Containers</span><span>${running}</span></div>
+      <div class="containers">${containers}</div>
+    </div>
+    <div class="card-foot">${foot}</div>
+  </article>`;
+}
+
+function containerRow(s, c) {
+  const key = `${s.name}/${c.name}`;
+  const busy = pending.has(key);
+  const can = s.stats.can_control;
+  const dis = busy || !can ? "disabled" : "";
+  const attrs = `data-server="${esc(s.name)}" data-container="${esc(c.name)}"`;
+  const running = c.state === "running" || c.state === "restarting";
+  const buttons = busy
+    ? `<button class="btn sm" disabled>Working…</button>`
+    : (running
+        ? `<button class="btn sm" data-action="restart" ${attrs} ${dis}>Restart</button>
+           <button class="btn sm" data-action="stop" ${attrs} ${dis}>Stop</button>`
+        : `<button class="btn sm" data-action="start" ${attrs} ${dis}>Start</button>`)
+      + `<button class="btn sm" data-logs ${attrs} ${can ? "" : "disabled"}>Logs</button>`;
+  return `<div class="ctr"><span class="dot ${esc(c.state)}" title="${esc(c.state)}"></span>
+    <div class="ctr-info"><div class="ctr-name" title="${esc(c.name)}">${esc(c.name)}</div>
+      <div class="ctr-meta" title="${esc(c.image)}">${esc(c.status)} · ${esc(c.image)}</div></div>
+    <div class="ctr-actions">${buttons}</div></div>`;
+}
+
+// One click handler for everything on the grid.
+$("#grid").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b || b.disabled) return;
+
+  if (b.hasAttribute("data-goto-settings")) { setView("settings"); openForm(); return; }
+
+  if (b.dataset.action) {
+    const { server, container, action } = b.dataset;
+    if (action === "stop") {
+      const ok = await confirmBox({ title: `Stop ${container}?`, message: `This stops the container on ${server}. You can start it again from here.`, okLabel: "Stop container", danger: true });
+      if (ok === null) return;
+    }
+    const key = `${server}/${container}`;
+    pending.add(key); renderGrid();
+    try {
+      await api("POST", `/api/servers/${encodeURIComponent(server)}/containers/${encodeURIComponent(container)}/${action}`);
+      toast(`${container}: ${action === "stop" ? "stopped" : action === "start" ? "started" : "restarted"}`);
+    } catch (err) {
+      toast(`${container}: ${err.message}`, true);
+    } finally {
+      pending.delete(key);
+      setTimeout(refresh, 1200); // give the agent a moment to see the new state
+      refresh();
+    }
+    return;
+  }
+
+  if (b.hasAttribute("data-logs")) { openLogs(b.dataset.server, b.dataset.container); return; }
+
+  if (b.dataset.reboot) {
+    const name = b.dataset.reboot;
+    const typed = await confirmBox({
+      title: `Reboot ${name}?`,
+      message: `This restarts the whole machine. Everything on ${name} goes offline for a minute or two, including its containers.`,
+      okLabel: "Reboot server", danger: true, typeToConfirm: name,
+    });
+    if (typed !== name) return;
+    b.disabled = true;
+    try {
+      await api("POST", `/api/servers/${encodeURIComponent(name)}/reboot`, { confirm: typed });
+      toast(`${name} is rebooting. It will show as down until it's back.`);
+    } catch (err) { toast(`Reboot failed: ${err.message}`, true); b.disabled = false; }
+  }
+});
+
+// ---------------- logs dialog ----------------
+let logsTarget = null;
+async function openLogs(server, container) {
+  logsTarget = { server, container };
+  $("#logs-title").textContent = `${container} · ${server}`;
+  $("#dlg-logs").showModal();
+  await loadLogs();
+}
+async function loadLogs() {
+  const pre = $("#logs-text");
+  pre.textContent = "Loading…";
+  try {
+    const { server, container } = logsTarget;
+    const text = await api("GET", `/api/servers/${encodeURIComponent(server)}/containers/${encodeURIComponent(container)}/logs?lines=${$("#logs-lines").value}`);
+    pre.textContent = text || "(no output)";
+    pre.scrollTop = pre.scrollHeight;
+  } catch (err) { pre.textContent = `Couldn't load logs: ${err.message}`; }
+}
+$("#logs-refresh").addEventListener("click", loadLogs);
+$("#logs-lines").addEventListener("change", loadLogs);
+$("#logs-close").addEventListener("click", () => $("#dlg-logs").close());
+
+// ---------------- settings view ----------------
+let editing = null; // name of server being edited, or null when adding
+
+function renderSettings() {
+  const rows = $("#server-rows");
+  if (!servers.length) {
+    rows.innerHTML = `<tr><td colspan="4" class="empty">No servers yet. Add one to get started.</td></tr>`;
+    return;
+  }
+  rows.innerHTML = servers.map((s) => `<tr>
+    <td><strong>${esc(s.name)}</strong> <span class="pill ${s.ok ? "up" : "down"}" style="margin-left:6px">${s.ok ? "Up" : "Down"}</span></td>
+    <td class="hide-sm num">${esc(s.url)}</td>
+    <td>${s.has_token ? "Set" : `<span style="color:var(--warn)">None</span>`}</td>
+    <td class="actions"><button class="btn sm" data-edit="${esc(s.name)}">Edit</button>
+      <button class="btn sm danger" data-remove="${esc(s.name)}">Remove</button></td></tr>`).join("");
+}
+
+$("#server-rows").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.edit) openForm(servers.find((s) => s.name === b.dataset.edit));
+  if (b.dataset.remove) {
+    const name = b.dataset.remove;
+    const ok = await confirmBox({ title: `Remove ${name}?`, message: `${name} will disappear from the panel. The server itself and its agent aren't changed, and you can add it back later.`, okLabel: "Remove", danger: true });
+    if (ok === null) return;
+    try { await api("DELETE", `/api/servers/${encodeURIComponent(name)}`); toast(`Removed ${name}`); closeForm(); refresh(); }
+    catch (err) { toast(err.message, true); }
+  }
+});
+
+$("#add-server").addEventListener("click", () => openForm());
+$("#f-cancel").addEventListener("click", closeForm);
+
+function openForm(s) {
+  editing = s ? s.name : null;
+  $("#server-form-panel").hidden = false;
+  $("#form-title").textContent = s ? `Edit ${s.name}` : "Add server";
+  $("#f-name").value = s ? s.name : "";
+  $("#f-name").disabled = !!s;
+  $("#f-url").value = s ? s.url.replace(/^http:\/\//, "") : "";
+  $("#f-token").value = "";
+  $("#f-token").placeholder = s && s.has_token ? "Leave blank to keep the current token" : "AGENT_TOKEN from /etc/server-agent/agent.env";
+  $("#f-result").textContent = ""; $("#f-result").className = "result";
+  $("#server-form-panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  (s ? $("#f-url") : $("#f-name")).focus();
+}
+function closeForm() { $("#server-form-panel").hidden = true; editing = null; }
+
+$("#server-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = editing || $("#f-name").value.trim();
+  const res = $("#f-result"), btn = $("#f-save");
+  btn.disabled = true; res.className = "result"; res.textContent = "Saving and testing…";
+  try {
+    const r = await api("PUT", `/api/servers/${encodeURIComponent(name)}`, { url: $("#f-url").value, token: $("#f-token").value });
+    if (r.test_ok) {
+      res.className = "result ok"; res.textContent = `Saved. ${name} is reachable.`;
+      editing = name; $("#f-name").disabled = true; $("#f-token").value = "";
+      $("#f-token").placeholder = "Leave blank to keep the current token";
+      $("#form-title").textContent = `Edit ${name}`;
+    } else {
+      res.className = "result bad"; res.textContent = `Saved, but can't reach it: ${r.test_error}`;
+      editing = name; $("#f-name").disabled = true;
+    }
+    refresh();
+  } catch (err) { res.className = "result bad"; res.textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+// ---------------- start ----------------
+(async () => {
+  try { await api("GET", "/api/me"); showApp(); } catch { showLogin(); }
+})();
+</script>
+</body>
+</html>

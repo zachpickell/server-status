@@ -1,0 +1,10 @@
+# /etc/server-panel/panel.toml
+
+# Serve the page on talon's Tailscale IP only. Find it with: tailscale ip -4
+listen = "100.x.y.z:8080"
+
+# From: server-panel hash-password
+# Keep the single quotes: the hash contains $ signs.
+password_hash = '$argon2id$...'
+
+# Servers are added from the Settings tab, not here.

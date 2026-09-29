@@ -27,6 +27,14 @@ pub struct Snapshot {
     pub net_tx_bps: u64,
 
     pub docker: Docker,
+
+    /// Whether this agent accepts container actions (start/stop/restart, logs).
+    /// `serde(default)` keeps older agents without these fields working.
+    #[serde(default)]
+    pub can_control: bool,
+    /// Whether this agent is allowed to reboot the machine.
+    #[serde(default)]
+    pub can_reboot: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

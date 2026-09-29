@@ -61,7 +61,10 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
             Style::new().fg(MUTED),
         ));
     } else {
-        spans.push(Span::styled(" server-status", Style::new().fg(ACCENT).bold()));
+        spans.push(Span::styled(
+            " server-status",
+            Style::new().fg(ACCENT).bold(),
+        ));
     }
     frame.render_widget(Line::from(spans), left);
     frame.render_widget(
@@ -478,6 +481,7 @@ mod tests {
                     },
                 ],
             },
+            ..Default::default()
         }
     }
 
