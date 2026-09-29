@@ -1,0 +1,10 @@
+[package]
+name = "server-agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+common = { version = "0.1.0", path = "../common" }
+serde_json = "1.0.151"
+sysinfo = "0.39.6"
+tiny_http = "0.12.0"

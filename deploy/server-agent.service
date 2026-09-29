@@ -1,0 +1,30 @@
+# systemd unit for the agent on falc.
+# Install:
+#   sudo cp target/release/server-agent /usr/local/bin/
+#   sudo cp deploy/server-agent.service /etc/systemd/system/
+#   sudo mkdir -p /etc/server-agent && sudo cp deploy/agent.env.example /etc/server-agent/agent.env
+#   sudo nano /etc/server-agent/agent.env        # set AGENT_LISTEN and AGENT_TOKEN
+#   sudo chmod 600 /etc/server-agent/agent.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now server-agent
+
+[Unit]
+Description=server-dashboard stats agent
+After=network-online.target docker.service tailscaled.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/server-agent/agent.env
+ExecStart=/usr/local/bin/server-agent
+Restart=always
+RestartSec=5
+
+# Run as an unprivileged throwaway user. It joins the docker group so
+# `docker ps` works (see the README note on what that means).
+DynamicUser=yes
+SupplementaryGroups=docker
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
