@@ -8,7 +8,7 @@
 #   sudo systemctl daemon-reload && sudo systemctl enable --now server-agent
 
 [Unit]
-Description=server-dashboard stats agent
+Description=server-status stats agent
 After=network-online.target docker.service tailscaled.service
 Wants=network-online.target
 
