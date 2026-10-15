@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["common", "agent", "dash", "panel"]
+members = ["common", "agent", "dash"]
 
 [profile.release]
 opt-level = 3

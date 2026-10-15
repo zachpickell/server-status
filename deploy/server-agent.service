@@ -1,5 +1,11 @@
-# systemd unit for server-agent (install on every server you monitor).
-# Setup steps are in the README ("Server setup").
+# systemd unit for the agent on falc.
+# Install:
+#   sudo cp target/release/server-agent /usr/local/bin/
+#   sudo cp deploy/server-agent.service /etc/systemd/system/
+#   sudo mkdir -p /etc/server-agent && sudo cp deploy/agent.env.example /etc/server-agent/agent.env
+#   sudo nano /etc/server-agent/agent.env        # set AGENT_LISTEN and AGENT_TOKEN
+#   sudo chmod 600 /etc/server-agent/agent.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now server-agent
 
 [Unit]
 Description=server-dashboard stats agent
@@ -12,17 +18,13 @@ ExecStart=/usr/local/bin/server-agent
 Restart=always
 RestartSec=5
 
-# Runs as the unprivileged `server-agent` system user. Put that user in the
-# `docker` group for container stats/controls, and install the polkit rule
-# from deploy/ if you want the reboot button.
-User=server-agent
-Group=server-agent
-StateDirectory=server-agent
-Environment=HOME=/var/lib/server-agent
+# Run as an unprivileged throwaway user. It joins the docker group so
+# `docker ps` works (see the README note on what that means).
+DynamicUser=yes
+SupplementaryGroups=docker
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

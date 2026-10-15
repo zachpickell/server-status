@@ -1,12 +1,12 @@
 //! Reads system stats with the `sysinfo` crate, and Docker containers
 //! by running the `docker` CLI.
 
+use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use common::{Container, Disk, Docker, Snapshot};
 use sysinfo::{Disks, Networks, System};
-
-use crate::exec::{self, RunError};
 
 /// Docker is slower to query than /proc, so only refresh it every few samples.
 const DOCKER_EVERY: Duration = Duration::from_secs(5);
@@ -34,12 +34,6 @@ impl Collector {
             docker: Docker::default(),
             last_docker: None,
         }
-    }
-
-    /// Re-read the container list on the next sample instead of waiting for
-    /// the usual interval (called after a container is started/stopped).
-    pub fn refresh_docker_soon(&mut self) {
-        self.last_docker = None;
     }
 
     pub fn sample(&mut self) -> Snapshot {
@@ -82,9 +76,6 @@ impl Collector {
             net_rx_bps: (rx as f64 / elapsed) as u64,
             net_tx_bps: (tx as f64 / elapsed) as u64,
             docker: self.docker.clone(),
-            // Filled in by main.rs, which knows the agent's settings.
-            can_control: false,
-            can_reboot: false,
         }
     }
 
@@ -129,33 +120,53 @@ fn is_physical_interface(name: &str) -> bool {
 }
 
 fn collect_docker() -> Docker {
-    let out = match exec::run(
-        "docker",
-        &[
+    let child = Command::new("docker")
+        .args([
             "ps",
             "-a",
             "--format",
             "{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}",
-        ],
-        DOCKER_TIMEOUT,
-        1024 * 1024,
-    ) {
-        Ok(o) => o,
-        Err(RunError::NotFound) => {
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+
+    let mut child = match child {
+        Ok(c) => c,
+        // Spawning fails when the docker binary doesn't exist.
+        Err(_) => {
             return Docker {
                 available: false,
                 ..Default::default()
             };
         }
-        Err(RunError::TimedOut) => return docker_error("docker timed out"),
-        Err(RunError::Other(e)) => return docker_error(&e),
     };
-    if !out.success {
-        return docker_error(exec::first_line(&out.text));
+
+    // std::process has no built-in timeout, so poll until done or give up.
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if start.elapsed() > DOCKER_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return docker_error("docker timed out");
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(50)),
+            Err(e) => return docker_error(&e.to_string()),
+        }
     }
 
-    // Lines that aren't 4 tab-separated fields (e.g. CLI warnings) are skipped.
-    let stdout = &out.text;
+    let output = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(e) => return docker_error(&e.to_string()),
+    };
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return docker_error(stderr.lines().next().unwrap_or("docker ps failed"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let mut containers: Vec<Container> = stdout
         .lines()
         .filter_map(|line| {
