@@ -10,11 +10,11 @@ It's two programs:
 ```
 $ server-status
 SERVER  STATUS     CPU    MEM  DISK (fullest)        UPTIME       DOCKER
-falc    ● up     12.5%    62%   92% /mnt/storage     3d 4h 12m    5/6 running
-talon   ● DOWN  connection refused
+web     ● up     12.5%    62%   92% /mnt/storage     3d 4h 12m    5/6 running
+db      ● DOWN  connection refused
 
-$ server-status falc
- falc  Linux (Ubuntu 24.04) · up 3d 4h 12m                                         ● UP
+$ server-status web
+ web  Linux (Ubuntu 24.04) · up 3d 4h 12m                                          ● UP
 ╭ CPU ─────────────────────────────────╮╭ Memory ──────────────────────────────╮
 │█████████████37.5%                    ││RAM 10.0 GiB / 16.0 GiB               │
 │      ▂▃▅▇█████     ▁▃▄▆█████    ▁▂▄▆ ││█████████████████62.5%██              │
@@ -34,9 +34,9 @@ $ server-status falc
 ## How it works
 
 ```
- MacBook ──┐                         ┌──► falc  (server-agent)
+ Laptop  ──┐                         ┌──► web  (server-agent)
            ├── Tailscale, HTTP ──────┤
- Desktop ──┘   GET /stats + token    └──► talon (server-agent)
+ Desktop ──┘   GET /stats + token    └──► db   (server-agent)
 ```
 
 - Each agent keeps its latest snapshot in memory, so requests are instant. It uses about 3 MB of RAM.
@@ -97,13 +97,13 @@ cargo install --path dash      # installs server-status into ~/.cargo/bin
 Then create `~/.config/server-status/config.toml`:
 
 ```toml
-[servers.falc]
+[servers.web]
 url = "100.x.y.z:9100"
-token = "falc-token"
+token = "web-token"
 
-[servers.talon]
+[servers.db]
 url = "100.a.b.c:9100"
-token = "talon-token"
+token = "db-token"
 ```
 
 ```bash
@@ -117,7 +117,7 @@ Don't commit this file anywhere public, because it holds your tokens.
 | Command | What it does |
 |---|---|
 | `server-status` | One-line summary of every server, then exits. Exit code 1 if any are down. |
-| `server-status falc` | Live dashboard for falc (`-falc` also works) |
+| `server-status web` | Live dashboard for web (`-web` also works) |
 | `server-status 100.x.y.z:9100` | Dashboard for an address not in the config (token from `DASH_TOKEN`) |
 | `server-status --help` | Help |
 
@@ -152,8 +152,9 @@ cargo run -p server-status -- 127.0.0.1:9100
 - [x] Monitor multiple servers
 - [ ] Alerts when a server goes down (Discord webhook, running on an always-on machine)
 - [ ] Per-container CPU and memory
-- [ ] Restart containers from the dashboard
+- [ ] Restart containers from the terminal
 
 ## AI disclosure
 
-Built with AI assistance (Claude) as a learning project.
+- Built with AI assistance (Claude) as a learning project.
+- If you see something that could be done better please create an issue and open a PR.
