@@ -5,10 +5,13 @@
 //!   server-status falc       live dashboard for one server (`-falc` works too)
 //!   server-status HOST:PORT  dashboard for an address not in the config
 //!                            (token from $DASH_TOKEN)
+//!   server-status watch      keep checking every server and alert on change
+//!                            (interval set by `alert.interval_secs` in config)
 //!
 //! Servers are listed in ~/.config/server-status/config.toml (see config.rs).
 //! Dashboard keys: q / Esc quit, r refresh now.
 
+mod alerts;
 mod app;
 mod config;
 mod format;
@@ -36,6 +39,7 @@ usage:
   server-status NAME       live dashboard for one server (e.g. falc, or -falc)
   server-status HOST:PORT  dashboard for an address not in your config
                            (token from DASH_TOKEN)
+  server-status watch      keep checking every server, alert only on change
 
 config: ~/.config/server-status/config.toml
 keys:   q quit, r refresh";
@@ -51,6 +55,22 @@ fn main() -> ExitCode {
         Some("-V" | "--version") => {
             println!("server-status {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
+        }
+
+        // Keep checking every server in the background and alert on change,
+        // instead of only finding out a server is down when you happen to run us.
+        Some("watch") => {
+            let (config, _) = match config::load() {
+                Ok(c) => c,
+                Err(e) => return fail(&e),
+            };
+            if config.servers.is_empty() {
+                return fail(&format!(
+                    "your config has no servers yet. Add some like this:\n\n{}",
+                    config::EXAMPLE
+                ));
+            }
+            overview::watch(&config, Duration::from_secs(config.alert.interval_secs))
         }
 
         // No name: overview of every server.
@@ -79,7 +99,7 @@ fn main() -> ExitCode {
             // Looks like an address rather than a name: connect directly.
             if target.contains(':') || target.contains('/') {
                 let token = std::env::var("DASH_TOKEN").ok().filter(|t| !t.is_empty());
-                return dashboard(normalize_url(target), token);
+                return dashboard(normalize_url(target), token, None);
             }
 
             let (config, path) = match config::load() {
@@ -87,7 +107,11 @@ fn main() -> ExitCode {
                 Err(e) => return fail(&e),
             };
             match config.servers.get(target) {
-                Some(server) => dashboard(normalize_url(&server.url), server.token.clone()),
+                Some(server) => dashboard(
+                    normalize_url(&server.url),
+                    server.token.clone(),
+                    config.alert.discord.clone(),
+                ),
                 None => {
                     let names: Vec<&str> = config.servers.keys().map(String::as_str).collect();
                     fail(&format!(
@@ -111,10 +135,10 @@ fn fail(msg: &str) -> ExitCode {
 }
 
 /// Open the live dashboard for one server.
-fn dashboard(url: String, token: Option<String>) -> ExitCode {
+fn dashboard(url: String, token: Option<String>, discord: Option<config::Discord>) -> ExitCode {
     let (refresh_tx, refresh_rx) = mpsc::channel();
     let results = poller::spawn(url.clone(), token, POLL_INTERVAL, refresh_rx);
-    let mut app = App::new(url);
+    let mut app = App::new(url, discord);
 
     // ratatui::init switches to the alternate screen + raw mode and installs
     // a panic hook that restores the terminal if we crash.

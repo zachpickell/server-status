@@ -56,61 +56,7 @@ deploy/   systemd unit and example config for the agent
 
 ## Setup
 
-Every machine needs to be on the same Tailscale network.
-
-### 1. On each server: the agent
-
-```bash
-sudo apt update && sudo apt install -y build-essential git curl gh
-curl https://sh.rustup.rs -sSf | sh && source ~/.cargo/env
-gh auth login && gh repo clone zachpickell/server-status && cd server-status
-
-cargo build --release -p server-agent
-sudo cp target/release/server-agent /usr/local/bin/
-sudo cp deploy/server-agent.service /etc/systemd/system/
-sudo mkdir -p /etc/server-agent
-sudo cp deploy/agent.env.example /etc/server-agent/agent.env
-sudo nano /etc/server-agent/agent.env      # AGENT_LISTEN=<tailscale ip>:9100, AGENT_TOKEN=<openssl rand -hex 32>
-sudo chmod 600 /etc/server-agent/agent.env
-sudo systemctl daemon-reload && sudo systemctl enable --now server-agent
-```
-
-If the server doesn't have Docker (`getent group docker` prints nothing), remove the Docker line from the service file first, or the agent won't start:
-
-```bash
-sudo sed -i '/SupplementaryGroups=docker/d' /etc/systemd/system/server-agent.service
-```
-
-Check it works:
-
-```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" http://$(tailscale ip -4):9100/stats
-```
-
-### 2. On your computers: `server-status`
-
-```bash
-git clone https://github.com/zachpickell/server-status.git && cd server-status
-cargo install --path dash      # installs server-status into ~/.cargo/bin
-```
-
-Then create `~/.config/server-status/config.toml`:
-
-```toml
-[servers.web]
-url = "100.x.y.z:9100"
-token = "web-token"
-
-[servers.db]
-url = "100.a.b.c:9100"
-token = "db-token"
-```
-
-```bash
-chmod 600 ~/.config/server-status/config.toml
-```
-
-Don't commit this file anywhere public, because it holds your tokens.
+See [docs/setup.md](docs/setup.md): install the agent on each server, install `server-status` on your computers, and write the config file. Every machine needs to be on the same Tailscale network.
 
 ## Usage
 
@@ -119,11 +65,18 @@ Don't commit this file anywhere public, because it holds your tokens.
 | `server-status` | One-line summary of every server, then exits. Exit code 1 if any are down. |
 | `server-status web` | Live dashboard for web (`-web` also works) |
 | `server-status 100.x.y.z:9100` | Dashboard for an address not in the config (token from `DASH_TOKEN`) |
+| `server-status watch` | Runs forever, checking every server and alerting on change (see Alerts below) |
 | `server-status --help` | Help |
 
 Dashboard keys: `q` quit, `r` refresh now.
 
 Set `SERVER_STATUS_CONFIG` to use a config file somewhere else.
+
+## Alerts
+
+`server-status` can send a Discord message when a server goes down (and another when it comes back up). See [docs/config.md](docs/config.md) for the `[alert]` config options.
+
+`server-status` (the one-shot summary) and `server-status web` (the live dashboard) alert too, but only for whatever they see on that one check — they don't keep watching after they exit. For an always-on check, run `server-status watch` in the background (e.g. as a systemd service, the same way the agent runs). It re-checks on the configured interval and only alerts on a change, not on every pass while a server stays down.
 
 ## Agent config
 
@@ -146,13 +99,6 @@ cargo clippy
 AGENT_LISTEN=127.0.0.1:9100 cargo run -p server-agent
 cargo run -p server-status -- 127.0.0.1:9100
 ```
-
-## Roadmap
-
-- [x] Monitor multiple servers
-- [ ] Alerts when a server goes down (Discord webhook, running on an always-on machine)
-- [ ] Per-container CPU and memory
-- [ ] Restart containers from the terminal
 
 ## AI disclosure
 

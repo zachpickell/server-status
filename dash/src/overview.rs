@@ -1,11 +1,14 @@
 //! `server-status` with no name: check every server at once and print a
 //! one-line summary for each, then exit.
 
+use std::collections::BTreeSet;
 use std::io::IsTerminal;
 use std::thread;
+use std::time::Duration;
 
 use common::Snapshot;
 
+use crate::alerts;
 use crate::config::Config;
 use crate::format;
 use crate::poller::{self, PollResult};
@@ -15,9 +18,8 @@ pub enum Row {
     Down { name: String, error: String },
 }
 
-/// Prints the table. Returns true if every server answered.
-pub fn run(config: &Config) -> bool {
-    // Query all servers in parallel so one dead server doesn't slow the rest.
+/// Queries all servers in parallel so one dead server doesn't slow the rest.
+fn poll_all(config: &Config) -> Vec<Row> {
     let handles: Vec<_> = config
         .servers
         .iter()
@@ -35,12 +37,67 @@ pub fn run(config: &Config) -> bool {
         })
         .collect();
 
-    let rows: Vec<Row> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    handles.into_iter().map(|h| h.join().unwrap()).collect()
+}
+
+/// Prints the table. Returns true if every server answered.
+pub fn run(config: &Config) -> bool {
+    let rows = poll_all(config);
     let all_up = rows.iter().all(|r| matches!(r, Row::Up { .. }));
 
-    let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-    print!("{}", render(&rows, color));
+    print!("{}", render(&rows, use_color()));
+
+    if let Some(discord) = config.alert.discord.as_ref() {
+        let role_id = discord.role_id.as_deref().unwrap_or("");
+        for row in &rows {
+            if let Row::Down { name, error } = row {
+                let message = format!("<@&{role_id}>\nServer {name} is down: {error}");
+                if let Err(e) = alerts::send_discord_alert(discord, &message) {
+                    eprintln!("Failed to send Discord alert for {name}: {e}");
+                }
+            }
+        }
+    }
+
     all_up
+}
+
+/// Checks every server every `interval`, forever. Only alerts on a change
+/// (down, or back up) so a server that's still down doesn't re-alert on
+/// every pass.
+pub fn watch(config: &Config, interval: Duration) -> ! {
+    let mut down = BTreeSet::new();
+    loop {
+        let rows = poll_all(config);
+        print!("{}", render(&rows, use_color()));
+
+        if let Some(discord) = config.alert.discord.as_ref() {
+            let role_id = discord.role_id.as_deref().unwrap_or("");
+            for row in &rows {
+                match row {
+                    Row::Down { name, error } if down.insert(name.clone()) => {
+                        let message = format!("<@&{role_id}>\nServer {name} is down: {error}");
+                        if let Err(e) = alerts::send_discord_alert(discord, &message) {
+                            eprintln!("Failed to send Discord alert for {name}: {e}");
+                        }
+                    }
+                    Row::Up { name, .. } if down.remove(name) => {
+                        let message = format!("<@&{role_id}>\nServer {name} is back up");
+                        if let Err(e) = alerts::send_discord_alert(discord, &message) {
+                            eprintln!("Failed to send Discord alert for {name}: {e}");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        thread::sleep(interval);
+    }
+}
+
+fn use_color() -> bool {
+    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
 }
 
 pub fn render(rows: &[Row], color: bool) -> String {

@@ -6,6 +6,8 @@ use std::time::Instant;
 
 use common::Snapshot;
 
+use crate::alerts;
+use crate::config::Discord;
 use crate::poller::PollResult;
 
 /// How many failed polls in a row before we call the server DOWN.
@@ -22,6 +24,7 @@ pub enum Status {
 
 pub struct App {
     pub url: String,
+    discord: Option<Discord>,
     pub snapshot: Option<Snapshot>,
     pub last_ok: Option<Instant>,
     pub last_error: Option<String>,
@@ -35,9 +38,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(url: String) -> Self {
+    pub fn new(url: String, discord: Option<Discord>) -> Self {
         Self {
             url,
+            discord,
             snapshot: None,
             last_ok: None,
             last_error: None,
@@ -50,6 +54,7 @@ impl App {
     }
 
     pub fn apply(&mut self, result: PollResult) {
+        let was_down = self.status() == Status::Down;
         match result {
             PollResult::Ok(snap) => {
                 push(&mut self.cpu_history, snap.cpu_percent.round() as u64);
@@ -65,6 +70,21 @@ impl App {
                 self.last_error = Some(e);
                 self.failures += 1;
                 self.failing_since.get_or_insert_with(Instant::now);
+            }
+        }
+        if !was_down && self.status() == Status::Down {
+            if let Some(discord) = self.discord.clone() {
+                let role_id = discord.role_id.as_deref().unwrap_or("");
+                let message = format!(
+                    "<@&{role_id}>\nServer {} is down: {}",
+                    self.url,
+                    self.last_error.as_deref().unwrap_or("poll failed")
+                );
+                std::thread::spawn(move || {
+                    if let Err(e) = alerts::send_discord_alert(&discord, &message) {
+                        eprintln!("Failed to send Discord alert: {e}");
+                    }
+                });
             }
         }
     }

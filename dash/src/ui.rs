@@ -61,7 +61,10 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
             Style::new().fg(MUTED),
         ));
     } else {
-        spans.push(Span::styled(" server-status", Style::new().fg(ACCENT).bold()));
+        spans.push(Span::styled(
+            " server-status",
+            Style::new().fg(ACCENT).bold(),
+        ));
     }
     frame.render_widget(Line::from(spans), left);
     frame.render_widget(
@@ -497,7 +500,7 @@ mod tests {
 
     #[test]
     fn renders_up_and_down() {
-        let mut app = App::new("http://falc:9100/stats".into());
+        let mut app = App::new("http://falc:9100/stats".into(), None);
         for i in 0..40 {
             let mut s = sample();
             s.cpu_percent = (i * 7 % 100) as f32;
@@ -520,7 +523,7 @@ mod tests {
 
     #[test]
     fn renders_before_first_response() {
-        let mut app = App::new("http://falc:9100/stats".into());
+        let mut app = App::new("http://falc:9100/stats".into(), None);
         assert!(render(&app).contains("Connecting to"));
         app.apply(PollResult::Err("connection refused".into()));
         assert!(render(&app).contains("Can't reach"));

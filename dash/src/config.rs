@@ -17,6 +17,8 @@ pub struct Config {
     /// A BTreeMap keeps them in alphabetical order for the overview.
     #[serde(default)]
     pub servers: BTreeMap<String, Server>,
+    #[serde(default)]
+    pub alert: Alert,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -24,6 +26,36 @@ pub struct Server {
     /// "100.71.44.84:9100" or "http://host:9100". `/stats` is added automatically.
     pub url: String,
     pub token: Option<String>,
+}
+
+/// Each field is a separate alert channel. Add one (e.g. `email`) when you need it.
+#[derive(Deserialize, Debug)]
+pub struct Alert {
+    pub discord: Option<Discord>,
+    // pub email: Option<Email>, // TODO
+    /// How often `server-status watch` checks the servers, in seconds.
+    #[serde(default = "default_interval_secs")]
+    pub interval_secs: u64,
+}
+
+impl Default for Alert {
+    fn default() -> Self {
+        Self {
+            discord: None,
+            interval_secs: default_interval_secs(),
+        }
+    }
+}
+
+fn default_interval_secs() -> u64 {
+    60
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Discord {
+    pub webhook: String,
+    /// Discord role ID to @-mention on alerts, e.g. "123456789012345678".
+    pub role_id: Option<String>,
 }
 
 pub const EXAMPLE: &str = r#"[servers.falc]
@@ -86,6 +118,13 @@ mod tests {
     fn token_is_optional() {
         let c = parse("[servers.box]\nurl = \"box:9100\"\n").unwrap();
         assert!(c.servers["box"].token.is_none());
+    }
+
+    #[test]
+    fn interval_secs_defaults_to_60_but_can_be_set() {
+        assert_eq!(parse(EXAMPLE).unwrap().alert.interval_secs, 60);
+        let c = parse("[alert]\ninterval_secs = 30\n").unwrap();
+        assert_eq!(c.alert.interval_secs, 30);
     }
 
     #[test]
