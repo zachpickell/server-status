@@ -41,13 +41,14 @@ pub fn path() -> Option<PathBuf> {
     let base = env::var_os("XDG_CONFIG_HOME")
         .filter(|p| !p.is_empty())
         .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .or_else(|| env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".config")))?;
     Some(base.join("server-status").join("config.toml"))
 }
 
 /// Load the config, or return a message explaining what's wrong.
 pub fn load() -> Result<(Config, PathBuf), String> {
-    let path = path().ok_or("couldn't work out your home folder (HOME is not set)")?;
+    let path = path().ok_or("couldn't work out your home folder (HOME/USERPROFILE is not set)")?;
 
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
